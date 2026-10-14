@@ -32,7 +32,7 @@ public class Main {
                 Executors.newFixedThreadPool(poolSize);
 
         CountDownLatch readyGate =
-                new CountDownLatch(totalPassengers);
+                new CountDownLatch(poolSize);
 
         CountDownLatch startGate =
                 new CountDownLatch(1);

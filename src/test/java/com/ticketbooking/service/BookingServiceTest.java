@@ -10,6 +10,16 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+
 class BookingServiceTest {
 
     private BookingService bookingService;
@@ -103,5 +113,67 @@ class BookingServiceTest {
         assertEquals(0, train.getAvailableSeats());
         assertEquals(3, bookingService.getBookings().size());
     }
+    
+    @Test
+    void shouldAllowOnlyOneBookingWhenTwentyPassengersCompete()
+            throws Exception {
+
+        int passengerCount = 20;
+
+        CountDownLatch startGate = new CountDownLatch(1);
+
+        ExecutorService executor =
+                Executors.newFixedThreadPool(10);
+
+        List<Future<Optional<Booking>>> futures =
+                new ArrayList<>();
+
+        try {
+            for (int i = 1; i <= passengerCount; i++) {
+                final int passengerId = i;
+
+                Future<Optional<Booking>> future =
+                        executor.submit(() -> {
+                            Passenger p = new Passenger(
+                                    passengerId,
+                                    "Passenger-" + passengerId,
+                                    "passenger" + passengerId
+                                            + "@example.com"
+                            );
+
+                            startGate.await();
+
+                            return bookingService.bookTicket(
+                                    train, p, 1
+                            );
+                        });
+
+                futures.add(future);
+            }
+
+            // Release all submitted tasks together.
+            startGate.countDown();
+
+            int successfulBookings = 0;
+
+            for (Future<Optional<Booking>> future : futures) {
+                if (future.get(10, TimeUnit.SECONDS).isPresent()) {
+                    successfulBookings++;
+                }
+            }
+
+            assertEquals(1, successfulBookings);
+            assertEquals(2, train.getAvailableSeats());
+            assertEquals(1, bookingService.getBookings().size());
+
+        } finally {
+            startGate.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(
+                    5, TimeUnit.SECONDS
+            ));
+        }
+    }
+
 }
 
