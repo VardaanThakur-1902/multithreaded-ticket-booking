@@ -1,58 +1,110 @@
 
 package com.ticketbooking;
 
+import com.ticketbooking.concurrency.BookingTask;
 import com.ticketbooking.model.Passenger;
 import com.ticketbooking.model.Train;
 import com.ticketbooking.service.BookingService;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 public class Main {
 
-    public static void main(String[] args) {
+    public static void main(String[] args)
+            throws InterruptedException {
+
+        int totalSeats = 1;
+        int totalPassengers = 20;
+        int poolSize = 5;
 
         Train train = new Train(
                 101,
                 "Rajdhani Express",
-                5
+                totalSeats
         );
 
         BookingService bookingService = new BookingService();
 
-        Passenger passenger1 = new Passenger(
-                1,
-                "Rahul Sharma",
-                "rahul@example.com"
-        );
+        ExecutorService executor =
+                Executors.newFixedThreadPool(poolSize);
 
-        Passenger passenger2 = new Passenger(
-                2,
-                "Priya Verma",
-                "priya@example.com"
-        );
+        CountDownLatch readyGate =
+                new CountDownLatch(totalPassengers);
 
-        // Display initial seat availability
-        bookingService.displayAvailableSeats(train);
+        CountDownLatch startGate =
+                new CountDownLatch(1);
 
-        // Book seat 1 for passenger 1
-        bookingService.bookTicket(train, passenger1, 1);
+        System.out.println("===== MULTITHREADED BOOKING SIMULATOR =====");
+        System.out.println("Train: " + train.getTrainName());
+        System.out.println("Available seats: " + totalSeats);
+        System.out.println("Passengers: " + totalPassengers);
+        System.out.println("Worker threads: " + poolSize);
+        System.out.println("-------------------------------------------");
 
-        // Attempt to book the same seat for passenger 2
-        bookingService.bookTicket(train, passenger2, 1);
+        try {
+            for (int i = 1; i <= totalPassengers; i++) {
 
-        // Book another seat for passenger 2
-        bookingService.bookTicket(train, passenger2, 2);
+                Passenger passenger = new Passenger(
+                        i,
+                        "Passenger-" + i,
+                        "passenger" + i + "@example.com"
+                );
 
-        // Display all active bookings
+                BookingTask task = new BookingTask(
+                        bookingService,
+                        train,
+                        passenger,
+                        1,
+                        readyGate,
+                        startGate
+                );
+
+                executor.submit(task);
+            }
+
+            // Wait until every task is ready.
+            readyGate.await();
+
+            System.out.println("\nAll tasks are ready!");
+            System.out.println("Releasing booking requests...\n");
+
+            // Release all waiting tasks.
+            startGate.countDown();
+
+        } finally {
+            // Shut down after all submitted tasks finish.
+            executor.shutdown();
+
+            if (!executor.awaitTermination(
+                    30, TimeUnit.SECONDS)) {
+
+                executor.shutdownNow();
+
+                if (!executor.awaitTermination(
+                        5, TimeUnit.SECONDS)) {
+                    System.err.println(
+                            "Some tasks did not terminate."
+                    );
+                }
+            }
+        }
+
+        System.out.println("\n===== FINAL RESULTS =====");
+
         bookingService.displayAllBookings();
-
-        // Display remaining seats
         bookingService.displayAvailableSeats(train);
 
-        // Cancel booking 1
-        bookingService.cancelBooking(1);
+        System.out.println(
+                "Bookings recorded: "
+                        + bookingService.getBookings().size()
+        );
 
-        // Display final availability
-        bookingService.displayAvailableSeats(train);
-
-        System.out.println("\nSimulation completed.");
+        System.out.println(
+                "Available seats: "
+                        + train.getAvailableSeats()
+        );
     }
 }
